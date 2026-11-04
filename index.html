@@ -214,21 +214,21 @@
                             <div class="flex justify-between items-center p-2.5 rounded-xl bg-slate-800 border border-slate-700">
                                 <span class="text-xs text-slate-400 uppercase font-semibold">Base:</span>
                                 <span id="card-back-base" class="text-base font-bold text-white">speak</span>
-                                <button onclick="event.stopPropagation(); speakText(document.getElementById('card-back-base').innerText)" class="p-2 text-brand-accent hover:text-white">
+                                <button onclick="event.stopPropagation(); speakVerb(document.getElementById('card-back-base').innerText, 'base')" class="p-2 text-brand-accent hover:text-white">
                                     <i class="fa-solid fa-volume-high"></i>
                                 </button>
                             </div>
                             <div class="flex justify-between items-center p-2.5 rounded-xl bg-slate-800 border border-slate-700">
                                 <span class="text-xs text-slate-400 uppercase font-semibold">Past:</span>
                                 <span id="card-back-past" class="text-base font-bold text-white">spoke</span>
-                                <button onclick="event.stopPropagation(); speakText(document.getElementById('card-back-past').innerText)" class="p-2 text-brand-accent hover:text-white">
+                                <button onclick="event.stopPropagation(); speakVerb(document.getElementById('card-back-past').innerText, 'past')" class="p-2 text-brand-accent hover:text-white">
                                     <i class="fa-solid fa-volume-high"></i>
                                 </button>
                             </div>
                             <div class="flex justify-between items-center p-2.5 rounded-xl bg-slate-800 border border-slate-700">
                                 <span class="text-xs text-slate-400 uppercase font-semibold">Participle:</span>
                                 <span id="card-back-participle" class="text-base font-bold text-white">spoken</span>
-                                <button onclick="event.stopPropagation(); speakText(document.getElementById('card-back-participle').innerText)" class="p-2 text-brand-accent hover:text-white">
+                                <button onclick="event.stopPropagation(); speakVerb(document.getElementById('card-back-participle').innerText, 'past_participle')" class="p-2 text-brand-accent hover:text-white">
                                     <i class="fa-solid fa-volume-high"></i>
                                 </button>
                             </div>
@@ -286,7 +286,7 @@
                         <h3 id="quiz-base-verb" class="text-3xl font-black text-slate-900">
                             write
                         </h3>
-                        <button onclick="speakText(document.getElementById('quiz-base-verb').innerText)" class="p-2 text-brand-teal hover:text-slate-900">
+                        <button onclick="speakVerb(document.getElementById('quiz-base-verb').innerText, 'base')" class="p-2 text-brand-teal hover:text-slate-900">
                             <i class="fa-solid fa-volume-high text-lg"></i>
                         </button>
                     </div>
@@ -563,37 +563,73 @@
             currentVoice = voices.find(v => v.name === select.value) || null;
         }
 
-        // Audio TTS Core Function
-        function speakText(text, callback) {
+        // Audio TTS Core Function with Verb Fixes
+        function speakVerb(text, tense, callback) {
             if (!('speechSynthesis' in window)) {
                 alert("Speech synthesis is not supported on this browser.");
                 return;
             }
 
             // Cancel active utterances
-            synth.cancel();
+            window.speechSynthesis.cancel();
 
-            // Clean string slashes for pronunciation
-            const cleanText = text.replace(/\//g, " or ").replace(/or/g, " or ");
+            let spokenText = text.toLowerCase();
+            
+            // 1. Handle slashes: convert "was/were" to "was or were"
+            spokenText = spokenText.replace(/\//g, ' or ');
 
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            if (currentVoice) utterance.voice = currentVoice;
-            utterance.rate = 0.9; // Slightly slower for clarity
+            // 2. Handle Homographs & Tricky Pronunciations via Phonetic Overrides
+            const phoneticOverrides = {
+                'read': (tense === 'past' || tense === 'past_participle') ? 'red' : 'reed',
+                'wind': 'wined', 
+                'wound': 'wownd',
+                'tear': 'tare', 
+                'tore': 'tore',
+                'sow': 'so',
+                'lead': (tense === 'base') ? 'leed' : 'led',
+                'dove or dived': 'duv or dived'
+            };
+
+            // Apply override if it exists for the specific word
+            if (phoneticOverrides[text]) {
+                if (typeof phoneticOverrides[text] === 'string') {
+                    spokenText = phoneticOverrides[text];
+                }
+            } else if (text === 'read' && (tense === 'past' || tense === 'past_participle')) {
+                spokenText = 'red';
+            } else if (text === 'read' && tense === 'base') {
+                spokenText = 'reed';
+            }
+
+            // 3. Configure the utterance
+            const utterance = new SpeechSynthesisUtterance(spokenText);
+            utterance.lang = 'en-US'; 
+            utterance.rate = 0.85;    
             utterance.pitch = 1.0;
+            
+            if (currentVoice) {
+                utterance.voice = currentVoice;
+            } else {
+                const voices = window.speechSynthesis.getVoices();
+                const macVoice = voices.find(voice => voice.name === 'Samantha' || voice.name === 'Alex');
+                if (macVoice) {
+                    utterance.voice = macVoice;
+                }
+            }
 
             if (callback) {
                 utterance.onend = callback;
             }
 
-            synth.speak(utterance);
+            window.speechSynthesis.speak(utterance);
         }
 
         function playSequence(base, past, participle) {
-            speakText(base, () => {
+            speakVerb(base, 'base', () => {
                 setTimeout(() => {
-                    speakText(past, () => {
+                    speakVerb(past, 'past', () => {
                         setTimeout(() => {
-                            speakText(participle);
+                            speakVerb(participle, 'past_participle');
                         }, 400);
                     });
                 }, 400);
@@ -636,7 +672,7 @@
                     <td class="p-4 pl-6 font-semibold text-slate-900">
                         <div class="flex items-center space-x-2">
                             <span>${v.base}</span>
-                            <button onclick="speakText('${v.base}')" title="Listen Base Form" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
+                            <button onclick="speakVerb('${v.base}', 'base')" title="Listen Base Form" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
                             </button>
                         </div>
@@ -644,7 +680,7 @@
                     <td class="p-4 text-slate-700">
                         <div class="flex items-center space-x-2">
                             <span>${v.past}</span>
-                            <button onclick="speakText('${v.past}')" title="Listen Past Form" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
+                            <button onclick="speakVerb('${v.past}', 'past')" title="Listen Past Form" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
                             </button>
                         </div>
@@ -652,7 +688,7 @@
                     <td class="p-4 text-slate-700">
                         <div class="flex items-center space-x-2">
                             <span>${v.participle}</span>
-                            <button onclick="speakText('${v.participle}')" title="Listen Past Participle" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
+                            <button onclick="speakVerb('${v.participle}', 'past_participle')" title="Listen Past Participle" class="text-slate-400 hover:text-brand-teal p-1 transition-colors">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
                             </button>
                         </div>
